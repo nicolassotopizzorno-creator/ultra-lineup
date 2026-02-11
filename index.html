@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ultra Buenos Aires 2026</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="topbar-left"></div>
+
+    <div class="topbar-center">
+      <img class="logo" src="assets/ultra-logo.png" alt="Ultra Buenos Aires" />
+    </div>
+
+    <div class="topbar-right">
+      <div class="day-switch">
+        <button id="day1Btn" class="day-btn active" type="button">Día 1</button>
+        <button id="day2Btn" class="day-btn" type="button">Día 2</button>
+      </div>
+      <div class="day-meta" id="dayMeta">14/02</div>
+    </div>
+  </header>
+
+  <!--
+    NUEVA ESTRUCTURA:
+    - #stageColumn : columna de escenarios FUERA del scroll (nunca se tapa)
+    - #scrollArea  : área scrolleable horizontalmente
+    - #timetable   : grilla de horarios + bloques de DJs
+  -->
+  <div id="timetableOuter">
+
+    <!-- Columna izquierda fija — NO hace scroll -->
+    <div id="stageColumn">
+      <!-- Se rellena con JS (buildStageColumn) -->
+    </div>
+
+    <!-- Área derecha — hace scroll horizontal -->
+    <div id="scrollArea">
+      <div id="timeLine"><div id="timeLineLabel"></div></div>
+      <div id="timetable"></div>
+    </div>
+
+  </div>
+
+  <script src="lineup.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
