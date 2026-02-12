@@ -26,6 +26,7 @@ body{
   background: radial-gradient(1200px 600px at 50% 0%, rgba(255,255,255,0.05), transparent), var(--bg);
   color: var(--text);
   margin: 20px;
+  overflow-x: hidden;  /* evita scroll horizontal global */
 }
 
 /* =====================
@@ -330,6 +331,7 @@ body{
    RESPONSIVE
    ===================== */
 @media (max-width: 900px){
+  body{ margin: 10px; }
   :root{ --col-stage: 140px; --row-h: 78px; }
   .stage-label{ font-size:14px; padding-left:10px; }
   .header{ font-size:13px; }
@@ -776,3 +778,4 @@ body{
   background:#1DB954;
   color:white;
 }
+
