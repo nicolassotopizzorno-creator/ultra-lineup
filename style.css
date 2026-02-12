@@ -337,6 +337,16 @@ body{
   .header{ font-size:13px; }
   .dj-artist{ font-size:13px; }
   .dj-time{ font-size:11px; }
+  
+  /* Permitir scroll vertical en mobile si no entra todo */
+  #timetableOuter{
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+  }
+  
+  #scrollArea{
+    overflow-y: visible;
+  }
 }
 
 /* =====================
@@ -780,5 +790,6 @@ body{
   background:#1DB954;
   color:white;
 }
+
 
 
