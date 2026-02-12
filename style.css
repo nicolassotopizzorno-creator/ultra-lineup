@@ -335,6 +335,8 @@ body{
   :root{ --col-stage: 140px; --row-h: 78px; }
   .stage-label{ font-size:14px; padding-left:10px; }
   .header{ font-size:13px; }
+  .dj-artist{ font-size:13px; }
+  .dj-time{ font-size:11px; }
 }
 
 /* =====================
@@ -778,4 +780,5 @@ body{
   background:#1DB954;
   color:white;
 }
+
 
