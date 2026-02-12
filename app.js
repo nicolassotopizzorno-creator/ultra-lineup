@@ -1,25 +1,10 @@
 // ===============================
-// FIREBASE CONFIG (versión compat para GitHub Pages)
-// ===============================
-const firebaseConfig = {
-  apiKey: "AIzaSyCVJjjeUbduFLG6PixSLVg7sHxDyuTDTAc",
-  authDomain: "ultra-buenos-aires.firebaseapp.com",
-  projectId: "ultra-buenos-aires",
-  storageBucket: "ultra-buenos-aires.firebasestorage.app",
-  messagingSenderId: "646234622202",
-  appId: "1:646234622202:web:69e8705419af7db8e2a143"
-};
-
-// Variables globales para Firebase (se inicializan después de cargar los scripts)
-let db = null;
-
-// ===============================
 // CONFIG
 // ===============================
 const intervalMinutes = 60;
 const startHour = 16;
 const endHour   = 2;
-const SLOT_MIN  = 1;
+const SLOT_MIN  = 1;    // granularidad de minutos exactos
 
 const stages = ["Main Stage","Resistance","Resistance 2","Ultra Park Stage"];
 
@@ -41,6 +26,7 @@ const USER_COLORS = [
   { name:"Blanco",      hex:"#FFFFFF" },
 ];
 
+// Oscurece un color hex por un factor (0-1)
 function darkenColor(hex, factor){
   const r=parseInt(hex.slice(1,3),16);
   const g=parseInt(hex.slice(3,5),16);
@@ -55,16 +41,13 @@ function darkenColor(hex, factor){
 let activeDay  = 1;
 let myColor    = null;
 let myName     = "";
-let myUserId   = null;
-let allUsers   = {}; // {userId: {name, color, itinerary}}
-let selectedUsers = new Set(); // IDs de usuarios a mostrar
-
 // Ancho de columna horaria - responsive
 function getColWidth(){
   return window.innerWidth <= 900 ? 120 : 240;
 }
 let colWidth = getColWidth();
 
+// Actualizar colWidth en resize
 window.addEventListener('resize', ()=>{
   const newWidth = getColWidth();
   if(newWidth !== colWidth){
@@ -75,131 +58,57 @@ window.addEventListener('resize', ()=>{
 });
 
 // ===============================
-// FIREBASE - GUARDAR/CARGAR
+// STORAGE
 // ===============================
-async function saveUserProfile(){
-  if(!myUserId || !myName || !myColor || !db) return;
-  try {
-    await db.collection("users").doc(myUserId).set({
-      name: myName,
-      color: myColor,
-      updatedAt: Date.now()
-    });
-    console.log("✅ Perfil guardado");
-  } catch(e){
-    console.error("Error guardando perfil:", e);
-  }
+function iKey(day){ return `ultra_itin2_day${day}`; }
+
+function loadItinerary(day){
+  try{ const r=localStorage.getItem(iKey(day)); return r?JSON.parse(r):{}; }
+  catch{ return {}; }
 }
 
-async function saveItinerary(day, data){
-  if(!myUserId || !db) return;
-  try {
-    await db.collection("itineraries").doc(`${myUserId}_day${day}`).set({
-      userId: myUserId,
-      day: day,
-      itinerary: data,
-      updatedAt: Date.now()
-    });
-    console.log(`✅ Itinerario día ${day} guardado`);
-  } catch(e){
-    console.error("Error guardando itinerario:", e);
-  }
+function saveItinerary(day, data){
+  localStorage.setItem(iKey(day), JSON.stringify(data));
 }
 
-async function loadItinerary(day){
-  if(!myUserId || !db) return {};
-  try {
-    const docSnap = await db.collection("itineraries").doc(`${myUserId}_day${day}`).get();
-    if(docSnap.exists){
-      return docSnap.data().itinerary || {};
-    }
-  } catch(e){
-    console.error("Error cargando itinerario:", e);
-  }
-  return {};
+function loadUserProfile(){
+  try{
+    const r=localStorage.getItem("ultra_user2");
+    if(r){ const p=JSON.parse(r); myColor=p.color; myName=p.name; }
+  }catch{}
 }
 
-async function loadAllUsers(){
-  if(!db) return;
-  try {
-    const snapshot = await db.collection("users").get();
-    allUsers = {};
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      allUsers[doc.id] = {
-        name: data.name,
-        color: data.color,
-        itinerary: {}
-      };
-    });
-    
-    const itinSnapshot = await db.collection("itineraries").get();
-    itinSnapshot.forEach(doc => {
-      const data = doc.data();
-      if(allUsers[data.userId]){
-        if(!allUsers[data.userId].itinerary) allUsers[data.userId].itinerary = {};
-        allUsers[data.userId].itinerary[`day${data.day}`] = data.itinerary;
-      }
-    });
-    renderUserSelector();
-  } catch(e){
-    console.error("Error cargando usuarios:", e);
-  }
-}
-
-function subscribeToChanges(){
-  if(!db) return;
-  db.collection("users").onSnapshot(()=>{
-    loadAllUsers().then(()=> drawBlocks(activeDay));
-  });
-  db.collection("itineraries").onSnapshot(()=>{
-    loadAllUsers().then(()=> drawBlocks(activeDay));
-  });
+function saveUserProfile(){
+  localStorage.setItem("ultra_user2", JSON.stringify({color:myColor,name:myName}));
 }
 
 // ===============================
-// USER ID
+// DOM
 // ===============================
-function getUserId(){
-  let uid = localStorage.getItem('ultra_uid');
-  if(!uid){
-    uid = 'u' + Date.now() + Math.random().toString(36).substr(2,9);
-    localStorage.setItem('ultra_uid', uid);
-  }
-  return uid;
-}
+const stageColumn = document.getElementById("stageColumn");
+const timetable   = document.getElementById("timetable");
 
 // ===============================
-// UTILS
+// TIEMPO
 // ===============================
-function generateGradientColor(baseColor, index, total){
-  if(total===1) return baseColor;
-  const factor=0.85+((index/(total-1))*0.3);
-  return `color-mix(in srgb, ${baseColor}, white ${(1-factor)*100}%)`;
-}
+function parseHHMM(s){ const [h,m]=s.split(":").map(Number); return h*60+m; }
 
-function formatTime(minutes){
-  let m=minutes%1440;
-  const h=Math.floor(m/60),mm=m%60;
-  return `${h.toString().padStart(2,'0')}:${mm.toString().padStart(2,'0')}`;
-}
-
-function getFestivalMinute(timeStr){
-  const [h,m]=timeStr.split(':').map(Number);
-  let min=h*60+m;
-  if(h<startHour) min+=1440;
-  return min;
+function getFestivalMinute(s){
+  let m=parseHHMM(s);
+  if(endHour<startHour && m<startHour*60) m+=1440;
+  return m;
 }
 
 function generateTimeSlots(){
-  const slots=[];
-  let current=startHour*60;
-  const end=(endHour<startHour?endHour+24:endHour)*60;
-  while(current<end){
-    slots.push(current);
-    current+=intervalMinutes;
-  }
+  const slots=[]; let cur=startHour*60;
+  const end=endHour<startHour?(24+endHour)*60:endHour*60;
+  while(cur<=end){ slots.push(cur); cur+=intervalMinutes; }
   return slots;
+}
+
+function formatTime(min){
+  const h=Math.floor(min/60)%24, m=min%60;
+  return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
 }
 
 function festMinToPx(m){
@@ -208,44 +117,66 @@ function festMinToPx(m){
 }
 
 // ===============================
-// COLOR PICKER
+// COLORES DJ
+// ===============================
+function generateGradientColor(baseColor,index,total){
+  const r=parseInt(baseColor.slice(1,3),16);
+  const g=parseInt(baseColor.slice(3,5),16);
+  const b=parseInt(baseColor.slice(5,7),16);
+  const pos=index/Math.max(total-1,1);
+  const l1=0.6+pos*0.8, l2=l1+0.25;
+  const c=v=>Math.min(255,Math.max(0,Math.round(v)));
+  return `linear-gradient(135deg,rgb(${c(r*l1)},${c(g*l1)},${c(b*l1)}),rgb(${c(r*l2)},${c(g*l2)},${c(b*l2)}))`;
+}
+
+// ===============================
+// MODAL — elegir color y nombre
 // ===============================
 function showColorPicker(cb){
   const overlay=document.createElement("div");
   overlay.id="colorPickerOverlay";
   overlay.innerHTML=`
     <div class="cp-modal">
-      <h2>Elegí tu color</h2>
-      <p>Este color identificará tu itinerario</p>
-      <div class="cp-colors" id="cpColors">
+      <div class="cp-logo">🎧</div>
+      <h2>Ultra Buenos Aires 2026</h2>
+      <p class="cp-sub">¿Cómo te llamás?</p>
+      <input id="cpName" type="text" placeholder="Tu nombre" maxlength="20" autocomplete="off"/>
+      <p class="cp-sub">Elegí tu color:</p>
+      <div class="cp-colors">
         ${USER_COLORS.map(c=>`
-          <div class="cp-color" data-hex="${c.hex}" style="background:${c.hex}" title="${c.name}"></div>
-        `).join('')}
+          <button class="cp-color-btn" data-hex="${c.hex}" title="${c.name}"
+            style="--c:${c.hex}">
+            <div class="cp-swatch"></div>
+            <span>${c.name}</span>
+          </button>
+        `).join("")}
       </div>
-      <input type="text" id="cpName" placeholder="Tu nombre" maxlength="20" />
-      <button id="cpConfirm" disabled>Continuar</button>
+      <div class="cp-preview" id="cpPreview">← Elegí un color</div>
+      <button class="cp-confirm" id="cpConfirm" disabled>¡Empezar! →</button>
     </div>
   `;
   document.body.appendChild(overlay);
 
-  let chosen=myColor;
-  document.getElementById("cpName").value=myName;
+  let chosen=null;
 
-  overlay.querySelectorAll(".cp-color").forEach(el=>{
-    if(el.dataset.hex===chosen) el.classList.add("selected");
-    el.addEventListener("click",()=>{
-      overlay.querySelectorAll(".cp-color").forEach(e=>e.classList.remove("selected"));
-      el.classList.add("selected");
-      chosen=el.dataset.hex;
-      const name=document.getElementById("cpName").value.trim();
-      document.getElementById("cpConfirm").disabled=!(chosen&&name.length>0);
+  overlay.querySelectorAll(".cp-color-btn").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      overlay.querySelectorAll(".cp-color-btn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      chosen=btn.dataset.hex;
+      const preview=document.getElementById("cpPreview");
+      preview.textContent=`Tu color: ${btn.title}`;
+      preview.style.color=chosen;
+      checkReady();
     });
   });
 
-  document.getElementById("cpName").addEventListener("input",()=>{
+  document.getElementById("cpName").addEventListener("input",checkReady);
+
+  function checkReady(){
     const name=document.getElementById("cpName").value.trim();
     document.getElementById("cpConfirm").disabled=!(chosen&&name.length>0);
-  });
+  }
 
   document.getElementById("cpConfirm").addEventListener("click",()=>{
     const name=document.getElementById("cpName").value.trim();
@@ -255,66 +186,7 @@ function showColorPicker(cb){
 }
 
 // ===============================
-// USER SELECTOR (Ver itinerarios de otros)
-// ===============================
-function renderUserSelector(){
-  const existing = document.getElementById("userSelector");
-  if(existing) existing.remove();
-
-  const selector = document.createElement("div");
-  selector.id = "userSelector";
-  selector.innerHTML = `
-    <label>Ver itinerarios:</label>
-    <div id="userCheckboxes"></div>
-  `;
-  
-  const checkboxContainer = document.createElement("div");
-  checkboxContainer.id = "userCheckboxes";
-
-  // Siempre mostrar el mío primero
-  if(myUserId){
-    const myCheck = document.createElement("label");
-    myCheck.className = "user-checkbox";
-    myCheck.innerHTML = `
-      <input type="checkbox" value="${myUserId}" ${selectedUsers.has(myUserId)?'checked':''}>
-      <span class="user-dot" style="background:${myColor}"></span>
-      <span>${myName} (yo)</span>
-    `;
-    checkboxContainer.appendChild(myCheck);
-  }
-
-  // Otros usuarios
-  Object.entries(allUsers).forEach(([uid, userData])=>{
-    if(uid === myUserId) return;
-    const check = document.createElement("label");
-    check.className = "user-checkbox";
-    check.innerHTML = `
-      <input type="checkbox" value="${uid}" ${selectedUsers.has(uid)?'checked':''}>
-      <span class="user-dot" style="background:${userData.color}"></span>
-      <span>${userData.name}</span>
-    `;
-    checkboxContainer.appendChild(check);
-  });
-
-  selector.appendChild(checkboxContainer);
-
-  checkboxContainer.addEventListener("change", (e)=>{
-    if(e.target.type === 'checkbox'){
-      const uid = e.target.value;
-      if(e.target.checked){
-        selectedUsers.add(uid);
-      } else {
-        selectedUsers.delete(uid);
-      }
-      drawBlocks(activeDay);
-    }
-  });
-
-  document.querySelector(".topbar-left").appendChild(selector);
-}
-
-// ===============================
-// BADGE usuario
+// BADGE usuario en topbar
 // ===============================
 function renderUserBadge(){
   document.getElementById("userBadge")?.remove();
@@ -329,7 +201,6 @@ function renderUserBadge(){
     showColorPicker((color,name)=>{
       myColor=color; myName=name;
       saveUserProfile(); renderUserBadge(); drawBlocks(activeDay);
-      loadAllUsers();
     });
   });
   document.querySelector(".topbar-right").prepend(badge);
@@ -338,9 +209,6 @@ function renderUserBadge(){
 // ===============================
 // BUILD columna de escenarios
 // ===============================
-const stageColumn=document.getElementById("stageColumn");
-const timetable=document.getElementById("timetable");
-
 function buildStageColumn(){
   stageColumn.innerHTML="";
   const corner=document.createElement("div");
@@ -382,217 +250,190 @@ function buildGrid(){
 function drawBlocks(day){
   timetable.querySelectorAll(".stage-row").forEach(el=>el.remove());
 
-  const data=( day===1?window.LINEUP.day1:window.LINEUP.day2)||[];
-  
-  // Combinar itinerarios de usuarios seleccionados
-  const combinedItineraries = {};
-  selectedUsers.forEach(uid=>{
-    const userData = uid === myUserId ? {color:myColor, itinerary:{[`day${day}`]:{}}} : allUsers[uid];
-    if(!userData) return;
-    
-    // Cargar itinerario de este usuario
-    const userItin = uid === myUserId ? {} : (userData.itinerary?.[`day${day}`] || {});
-    
-    Object.entries(userItin).forEach(([blockId, segs])=>{
-      if(!combinedItineraries[blockId]) combinedItineraries[blockId] = [];
-      combinedItineraries[blockId].push({
-        userId: uid,
-        color: userData.color,
-        segments: segs
+  const data     =(day===1?window.LINEUP.day1:window.LINEUP.day2)||[];
+  const itinerary=loadItinerary(day);
+  const slots    =generateTimeSlots();
+  const festStart=slots[0];
+  const festEnd  =slots[slots.length-1];
+  const rowH=92, headerH=46;
+
+  // Construir set de minutos cubiertos por el itinerario, por escenario-hora
+  // Un bloque se "atenúa" si existe OTRO bloque en diferente escenario
+  // que tenga selección en el mismo rango horario
+  const coveredMinutes = buildCoveredMinutes(itinerary);
+
+  stages.forEach((stage,si)=>{
+    const topPx=headerH+si*rowH;
+    const rowEl=document.createElement("div");
+    rowEl.className="stage-row";
+    rowEl.style.cssText=`top:${topPx}px;left:0;width:${slots.length*colWidth}px;height:${rowH}px;`;
+    timetable.appendChild(rowEl);
+
+    const items=data.filter(x=>x.stage===stage);
+    items.forEach((item,idx)=>{
+      const startM=getFestivalMinute(item.start);
+      const endM  =getFestivalMinute(item.end);
+      if(endM<=festStart||startM>=festEnd+intervalMinutes) return;
+
+      const cs=Math.max(startM,festStart);
+      const ce=Math.min(endM,festEnd+intervalMinutes);
+      const leftPx =Math.round(festMinToPx(cs));
+      const widthPx=Math.max(1,Math.round(festMinToPx(ce)-festMinToPx(cs)));
+
+      const bId=`d${day}|${stage}|${item.artist}|${item.start}|${item.end}`;
+      const segs=itinerary[bId]||[];
+
+      // Rangos dentro de este bloque que están cubiertos por OTROS escenarios
+      const dimmedRanges = getDimmedRanges(cs, ce, stage, coveredMinutes);
+
+      const block=document.createElement("div");
+      block.className="dj-block";
+      block.dataset.id=bId;
+      block.style.left=`${leftPx}px`;
+      block.style.width=`${widthPx}px`;
+      block.style.background=generateGradientColor(STAGE_COLORS[stage]||"#888",idx,items.length);
+
+      const nameEl=document.createElement("div");
+      nameEl.className="dj-artist"; nameEl.textContent=item.artist;
+
+      const timeEl=document.createElement("div");
+      timeEl.className="dj-time"; timeEl.textContent=`${item.start} – ${item.end}`;
+
+      block.appendChild(nameEl);
+      block.appendChild(timeEl);
+
+      // Atenuado: dos capas
+      // 1) overlay en la FILA (cubre los gaps top/bottom del bloque)
+      // 2) overlay en el BLOQUE (overflow:hidden lo recorta en las esquinas)
+      dimmedRanges.forEach(range=>{
+        const dLeft  = Math.round(festMinToPx(range.from));
+        const dWidth = Math.max(1, Math.round(festMinToPx(range.to) - festMinToPx(range.from)));
+
+        // Capa 1: en la fila, cubre todo el alto (gap incluido)
+        const rowDimEl = document.createElement("div");
+        rowDimEl.className = "dim-overlay-row";
+        rowDimEl.style.cssText = `left:${dLeft}px;width:${dWidth}px;`;
+        rowEl.appendChild(rowDimEl);
+
+        // Capa 2: en el bloque, recortada por border-radius del bloque
+        const dLeftBlock = Math.round(festMinToPx(range.from) - festMinToPx(cs));
+        const dimEl = document.createElement("div");
+        dimEl.className = "dim-overlay";
+        dimEl.style.cssText = `left:${dLeftBlock}px;width:${dWidth}px;`;
+        block.appendChild(dimEl);
       });
+
+      // Segmentos seleccionados encima
+      segs.forEach(seg=>{
+        const segLeft =Math.round(festMinToPx(seg.from)-festMinToPx(cs));
+        const segWidth=Math.max(1,Math.round(festMinToPx(seg.to)-festMinToPx(seg.from)));
+
+        const borderColor = darkenColor(myColor||"#FFD700", 0.55);
+
+        const segEl=document.createElement("div");
+        segEl.className="itinerary-seg";
+        segEl.style.cssText=`left:${segLeft}px;width:${segWidth}px;background:${myColor||"#FFD700"};border-color:${borderColor};`;
+
+        // Label: nombre del artista + horario seleccionado
+        const label=document.createElement("div");
+        label.className="itinerary-seg-label";
+        label.innerHTML=`<span class="seg-lbl-artist">${item.artist}</span><span class="seg-lbl-time">${formatTime(seg.from%1440)} – ${formatTime(seg.to%1440)}</span>`;
+        segEl.appendChild(label);
+
+        block.appendChild(segEl);
+      });
+
+      // Si tiene segmentos, ocultar el texto original del bloque
+      if(segs.length > 0){
+        nameEl.style.opacity = "0";
+        timeEl.style.opacity = "0";
+      }
+
+      block.style.pointerEvents="auto";
+      block.addEventListener("click",e=>{
+        e.stopPropagation();
+        openSegmentPicker(day,bId,item,cs,ce,coveredMinutes,stage);
+      });
+
+      rowEl.appendChild(block);
     });
   });
-
-  // Si el usuario actual está seleccionado, cargar su itinerario desde Firebase
-  if(selectedUsers.has(myUserId)){
-    loadItinerary(day).then(myItin=>{
-      Object.entries(myItin).forEach(([blockId, segs])=>{
-        if(!combinedItineraries[blockId]) combinedItineraries[blockId] = [];
-        combinedItineraries[blockId].push({
-          userId: myUserId,
-          color: myColor,
-          segments: segs
-        });
-      });
-      renderBlocks();
-    });
-  } else {
-    renderBlocks();
-  }
-
-  function renderBlocks(){
-    timetable.querySelectorAll(".stage-row").forEach(el=>el.remove());
-    
-    const slots=generateTimeSlots();
-    const festStart=slots[0];
-    const festEnd=slots[slots.length-1];
-    const rowH=92, headerH=46;
-
-    // Construir mapa de cobertura para dimming
-    const coveredMinutes = buildCoveredMinutes(combinedItineraries);
-
-    stages.forEach((stage,si)=>{
-      const topPx=headerH+si*rowH;
-      const rowEl=document.createElement("div");
-      rowEl.className="stage-row";
-      rowEl.style.cssText=`top:${topPx}px;left:0;width:${slots.length*colWidth}px;height:${rowH}px;`;
-      timetable.appendChild(rowEl);
-
-      const items=data.filter(x=>x.stage===stage);
-      items.forEach((item,idx)=>{
-        const startM=getFestivalMinute(item.start);
-        const endM=getFestivalMinute(item.end);
-        if(endM<=festStart||startM>=festEnd+intervalMinutes) return;
-
-        const cs=Math.max(startM,festStart);
-        const ce=Math.min(endM,festEnd+intervalMinutes);
-        const leftPx=Math.round(festMinToPx(cs));
-        const widthPx=Math.max(1,Math.round(festMinToPx(ce)-festMinToPx(cs)));
-
-        const bId=`d${day}|${stage}|${item.artist}|${item.start}|${item.end}`;
-        const userSegs=combinedItineraries[bId]||[];
-
-        const dimmedRanges=getDimmedRanges(cs,ce,stage,coveredMinutes);
-
-        const block=document.createElement("div");
-        block.className="dj-block";
-        block.dataset.id=bId;
-        block.style.left=`${leftPx}px`;
-        block.style.width=`${widthPx}px`;
-        block.style.background=generateGradientColor(STAGE_COLORS[stage]||"#888",idx,items.length);
-
-        const nameEl=document.createElement("div");
-        nameEl.className="dj-artist"; nameEl.textContent=item.artist;
-
-        const timeEl=document.createElement("div");
-        timeEl.className="dj-time"; timeEl.textContent=`${item.start} – ${item.end}`;
-
-        block.appendChild(nameEl);
-        block.appendChild(timeEl);
-
-        // Dim overlays en la fila
-        dimmedRanges.forEach(range=>{
-          const dLeft=Math.round(festMinToPx(range.from));
-          const dWidth=Math.max(1,Math.round(festMinToPx(range.to)-festMinToPx(range.from)));
-          const rowDimEl=document.createElement("div");
-          rowDimEl.className="dim-overlay-row";
-          rowDimEl.style.cssText=`left:${dLeft}px;width:${dWidth}px;`;
-          rowEl.appendChild(rowDimEl);
-
-          const dLeftBlock=Math.round(festMinToPx(range.from)-festMinToPx(cs));
-          const dimEl=document.createElement("div");
-          dimEl.className="dim-overlay";
-          dimEl.style.cssText=`left:${dLeftBlock}px;width:${dWidth}px;`;
-          block.appendChild(dimEl);
-        });
-
-        // Segmentos de todos los usuarios seleccionados
-        userSegs.forEach(({userId, color, segments})=>{
-          segments.forEach(seg=>{
-            const segLeft=Math.round(festMinToPx(seg.from)-festMinToPx(cs));
-            const segWidth=Math.max(1,Math.round(festMinToPx(seg.to)-festMinToPx(seg.from)));
-            const borderColor=darkenColor(color,0.55);
-
-            const segEl=document.createElement("div");
-            segEl.className="itinerary-seg";
-            segEl.style.cssText=`left:${segLeft}px;width:${segWidth}px;background:${color};border-color:${borderColor};`;
-
-            const label=document.createElement("div");
-            label.className="itinerary-seg-label";
-            const userName = userId===myUserId ? myName : (allUsers[userId]?.name || '');
-            label.innerHTML=`<span class="seg-lbl-artist">${item.artist}</span><span class="seg-lbl-time">${formatTime(seg.from%1440)} – ${formatTime(seg.to%1440)}</span><span class="seg-lbl-user">${userName}</span>`;
-            segEl.appendChild(label);
-
-            block.appendChild(segEl);
-          });
-        });
-
-        if(userSegs.length>0){
-          nameEl.style.opacity="0";
-          timeEl.style.opacity="0";
-        }
-
-        block.style.pointerEvents="auto";
-        block.addEventListener("click",e=>{
-          e.stopPropagation();
-          if(!myUserId) return;
-          loadItinerary(day).then(myItin=>{
-            openSegmentPicker(day,bId,item,cs,ce,coveredMinutes,stage,myItin);
-          });
-        });
-
-        rowEl.appendChild(block);
-      });
-    });
-  }
 }
 
-function buildCoveredMinutes(combinedItineraries){
+function buildCoveredMinutes(itinerary){
+  // { stage: Set<minute> } — cada minuto exacto cubierto por cada escenario
   const map={};
   stages.forEach(s=>{ map[s]=new Set(); });
-  
-  Object.entries(combinedItineraries).forEach(([bid,userSegsArray])=>{
+  Object.entries(itinerary).forEach(([bid,segs])=>{
     const parts=bid.split("|");
     const stage=parts[1];
-    userSegsArray.forEach(({segments})=>{
-      segments.forEach(seg=>{
-        for(let m=seg.from; m<seg.to; m++) map[stage]?.add(m);
-      });
+    segs.forEach(seg=>{
+      // paso de 1 minuto para precisión exacta
+      for(let m=seg.from; m<seg.to; m++) map[stage]?.add(m);
     });
   });
   return map;
 }
 
-function getDimmedRanges(cs,ce,stage,coveredMinutes){
-  const dimmedMins=[];
-  for(const [s,mins] of Object.entries(coveredMinutes)){
+// Devuelve rangos {from,to} dentro de [cs,ce] cubiertos por OTROS escenarios
+function getDimmedRanges(cs, ce, stage, coveredMinutes){
+  const dimmedMins = [];
+  for(const [s, mins] of Object.entries(coveredMinutes)){
     if(s===stage) continue;
-    for(let m=cs;m<ce;m++){
+    for(let m=cs; m<ce; m++){
       if(mins.has(m)) dimmedMins.push(m);
     }
   }
   if(dimmedMins.length===0) return [];
 
+  // Agrupar minutos contiguos en rangos
   const unique=[...new Set(dimmedMins)].sort((a,b)=>a-b);
   const ranges=[];
   let i=0;
   while(i<unique.length){
-    let from=unique[i],to=from+1;
-    while(i+1<unique.length&&unique[i+1]===to){ i++; to++; }
+    let from=unique[i], to=from+1;
+    while(i+1<unique.length && unique[i+1]===to){ i++; to++; }
     ranges.push({from,to}); i++;
   }
   return ranges;
 }
 
 // ===============================
-// POPUP SELECTOR
+// POPUP — selector de rango con slider
 // ===============================
-function openSegmentPicker(day,bId,item,cs,ce,coveredMinutes,stage,myItin){
+function openSegmentPicker(day,bId,item,cs,ce,coveredMinutes,stage){
   document.getElementById("segPickerOverlay")?.remove();
 
-  const existing=myItin[bId]||[];
-  let selFrom=cs;
-  let selTo=ce;
+  const itinerary=loadItinerary(day);
+  const existing =itinerary[bId]||[];
+
+  // Rango previo o default = rango completo del bloque (se ajusta abajo)
+  let selFrom = cs;
+  let selTo   = ce;
   if(existing.length>0){
-    selFrom=existing[0].from;
-    selTo=existing[existing.length-1].to;
+    selFrom = existing[0].from;
+    selTo   = existing[existing.length-1].to;
   }
 
+  // Rangos bloqueados por otros escenarios (para mostrar en slider)
   const blockedRanges=[];
   if(coveredMinutes){
     for(const [s,mins] of Object.entries(coveredMinutes)){
       if(s===stage) continue;
+      // recolectar minutos dentro de [cs,ce] cubiertos por este otro escenario
       const inBlock=[];
       for(let m=cs;m<ce;m++){
         if(mins.has(m)) inBlock.push(m);
       }
+      // agrupar en rangos contiguos
       let i=0;
       while(i<inBlock.length){
-        let from=inBlock[i],to=from+1;
-        while(i+1<inBlock.length&&inBlock[i+1]===to){ i++; to++; }
-        if(blockedRanges.length>0&&blockedRanges[blockedRanges.length-1].to>=from){
+        let from=inBlock[i], to=from+1;
+        while(i+1<inBlock.length && inBlock[i+1]===to){ i++; to++; }
+        // fusionar con el último rango si es contiguo
+        if(blockedRanges.length>0 && blockedRanges[blockedRanges.length-1].to>=from){
           blockedRanges[blockedRanges.length-1].to=Math.max(blockedRanges[blockedRanges.length-1].to,to);
-        }else{
+        } else {
           blockedRanges.push({from,to});
         }
         i++;
@@ -600,38 +441,46 @@ function openSegmentPicker(day,bId,item,cs,ce,coveredMinutes,stage,myItin){
     }
   }
 
-  const totalMin=ce-cs;
-  const SNAP=1;
+  const totalMin = ce - cs;  // duración total del bloque en minutos
+  const SNAP = 1;            // snap a 1 minuto exacto
 
-  let minFreeFrom=cs;
-  let maxFreeTo=ce;
+  // Calcular el límite mínimo libre (después del último bloqueo desde el inicio)
+  // Si hay bloqueados al inicio, el from debe comenzar después de ellos
+  let minFreeFrom = cs;
+  let maxFreeTo   = ce;
 
-  const sortedBlocked=[...blockedRanges].sort((a,b)=>a.from-b.from);
+  // Ordenar rangos bloqueados
+  const sortedBlocked = [...blockedRanges].sort((a,b)=>a.from-b.from);
 
+  // Si el primer rango bloqueado empieza desde el inicio del bloque,
+  // el handle izquierdo no puede ir antes del fin de ese bloque bloqueado
   for(const r of sortedBlocked){
-    if(r.from<=minFreeFrom){
-      minFreeFrom=Math.max(minFreeFrom,r.to);
+    if(r.from <= minFreeFrom){
+      minFreeFrom = Math.max(minFreeFrom, r.to);
     }
   }
+  // Análogo para el final: si hay bloqueados al final, el handle derecho no puede ir después
   for(const r of [...sortedBlocked].reverse()){
-    if(r.to>=maxFreeTo){
-      maxFreeTo=Math.min(maxFreeTo,r.from);
+    if(r.to >= maxFreeTo){
+      maxFreeTo = Math.min(maxFreeTo, r.from);
     }
   }
 
+  // Ajustar selección inicial al rango libre
   if(existing.length>0){
-    selFrom=Math.max(existing[0].from,minFreeFrom);
-    selTo=Math.min(existing[existing.length-1].to,maxFreeTo);
-  }else{
-    selFrom=minFreeFrom;
-    selTo=maxFreeTo;
+    selFrom = Math.max(existing[0].from, minFreeFrom);
+    selTo   = Math.min(existing[existing.length-1].to, maxFreeTo);
+  } else {
+    selFrom = minFreeFrom;
+    selTo   = maxFreeTo;
   }
-  if(selFrom>=selTo){ selFrom=minFreeFrom; selTo=maxFreeTo; }
+  // Garantizar que selFrom < selTo
+  if(selFrom >= selTo){ selFrom = minFreeFrom; selTo = maxFreeTo; }
 
   const overlay=document.createElement("div");
   overlay.id="segPickerOverlay";
-  const ytQuery=encodeURIComponent(`${item.artist} DJ set`);
-  const spQuery=encodeURIComponent(item.artist);
+  const ytQuery  = encodeURIComponent(`${item.artist} DJ set`);
+  const spQuery  = encodeURIComponent(item.artist);
   overlay.innerHTML=`
     <div class="seg-modal">
       <button class="seg-close" id="segClose">✕</button>
@@ -652,15 +501,20 @@ function openSegmentPicker(day,bId,item,cs,ce,coveredMinutes,stage,myItin){
       <p class="seg-instructions">Arrastrá los extremos para elegir tu horario.</p>
 
       <div class="range-wrap" id="rangeWrap">
+        <!-- Bloques ocupados por otros escenarios -->
         <div class="range-blocked-layer" id="rangeBlockedLayer"></div>
+        <!-- Riel de fondo -->
         <div class="range-track"></div>
+        <!-- Selección activa -->
         <div class="range-fill" id="rangeFill"></div>
+        <!-- Handles -->
         <div class="range-handle" id="handleFrom" data-role="from">
           <div class="range-handle-inner"></div>
         </div>
         <div class="range-handle" id="handleTo" data-role="to">
           <div class="range-handle-inner"></div>
         </div>
+        <!-- Labels de tiempo en los extremos del riel -->
         <div class="range-label range-label-start">${formatTime(cs%1440)}</div>
         <div class="range-label range-label-end">${formatTime(ce%1440)}</div>
       </div>
@@ -677,16 +531,17 @@ function openSegmentPicker(day,bId,item,cs,ce,coveredMinutes,stage,myItin){
   `;
   document.body.appendChild(overlay);
 
-  const wrap=document.getElementById("rangeWrap");
-  const fillEl=document.getElementById("rangeFill");
-  const handleFrom=document.getElementById("handleFrom");
-  const handleTo=document.getElementById("handleTo");
-  const summaryEl=document.getElementById("rangeSummary");
-  const blockedLayer=document.getElementById("rangeBlockedLayer");
+  const wrap       = document.getElementById("rangeWrap");
+  const fillEl     = document.getElementById("rangeFill");
+  const handleFrom = document.getElementById("handleFrom");
+  const handleTo   = document.getElementById("handleTo");
+  const summaryEl  = document.getElementById("rangeSummary");
+  const blockedLayer = document.getElementById("rangeBlockedLayer");
 
+  // Dibujar zonas bloqueadas
   blockedRanges.forEach(r=>{
-    const leftPct=((r.from-cs)/totalMin)*100;
-    const widthPct=((r.to-r.from)/totalMin)*100;
+    const leftPct  = ((r.from-cs)/totalMin)*100;
+    const widthPct = ((r.to-r.from)/totalMin)*100;
     const el=document.createElement("div");
     el.className="range-blocked";
     el.style.cssText=`left:${leftPct}%;width:${widthPct}%;`;
@@ -695,50 +550,56 @@ function openSegmentPicker(day,bId,item,cs,ce,coveredMinutes,stage,myItin){
   });
 
   function minToPercent(m){ return ((m-cs)/totalMin)*100; }
-  function percentToMin(p){ return cs+(p/100)*totalMin; }
-  function clamp(m){ return Math.max(cs,Math.min(ce,m)); }
+  function percentToMin(p){ return cs + (p/100)*totalMin; }
+  function snapMin(m){ return Math.round(m/SNAP)*SNAP; }
+  function clamp(m){ return Math.max(cs, Math.min(ce, m)); }
 
   function render(){
-    const fromPct=minToPercent(selFrom);
-    const toPct=minToPercent(selTo);
-    handleFrom.style.left=`${fromPct}%`;
-    handleTo.style.left=`${toPct}%`;
-    fillEl.style.left=`${fromPct}%`;
-    fillEl.style.width=`${toPct-fromPct}%`;
-    fillEl.style.background=myColor||"#FFD700";
-    summaryEl.textContent=`${formatTime(selFrom%1440)} – ${formatTime(selTo%1440)}`;
-    summaryEl.style.color=myColor||"#FFD700";
+    const fromPct = minToPercent(selFrom);
+    const toPct   = minToPercent(selTo);
+    handleFrom.style.left = `${fromPct}%`;
+    handleTo.style.left   = `${toPct}%`;
+    fillEl.style.left     = `${fromPct}%`;
+    fillEl.style.width    = `${toPct-fromPct}%`;
+    fillEl.style.background = myColor||"#FFD700";
+    summaryEl.textContent = `${formatTime(selFrom%1440)} – ${formatTime(selTo%1440)}`;
+    summaryEl.style.color = myColor||"#FFD700";
   }
 
   function isInBlockedRange(m){
-    return sortedBlocked.some(r=>m>=r.from&&m<r.to);
+    return sortedBlocked.some(r => m >= r.from && m < r.to);
   }
 
-  function startDrag(role,e){
+  function startDrag(role, e){
     e.preventDefault();
-    handleFrom.classList.toggle("dragging",role==="from");
-    handleTo.classList.toggle("dragging",role==="to");
-    const rect=wrap.getBoundingClientRect();
+    handleFrom.classList.toggle("dragging", role==="from");
+    handleTo.classList.toggle("dragging",   role==="to");
+    const rect = wrap.getBoundingClientRect();
 
     function onMove(ev){
-      const clientX=ev.touches?ev.touches[0].clientX:ev.clientX;
-      const pct=Math.max(0,Math.min(100,((clientX-rect.left)/rect.width)*100));
-      let m=Math.round(clamp(percentToMin(pct)));
+      const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+      const pct = Math.max(0, Math.min(100, ((clientX-rect.left)/rect.width)*100));
+      let m = Math.round(clamp(percentToMin(pct)));
 
       if(role==="from"){
-        m=Math.max(m,minFreeFrom);
-        m=Math.min(m,selTo-1);
+        // No puede entrar en zona bloqueada ni ir más allá del handle derecho
+        m = Math.max(m, minFreeFrom);
+        m = Math.min(m, selTo - 1);
+        // Si cae en zona bloqueada, empujar al borde libre más cercano
         if(isInBlockedRange(m)){
-          while(m<selTo&&isInBlockedRange(m))m++;
+          // buscar el siguiente minuto libre hacia adelante
+          while(m < selTo && isInBlockedRange(m)) m++;
         }
-        selFrom=m;
-      }else{
-        m=Math.min(m,maxFreeTo);
-        m=Math.max(m,selFrom+1);
+        selFrom = m;
+      } else {
+        // No puede entrar en zona bloqueada ni ir antes del handle izquierdo
+        m = Math.min(m, maxFreeTo);
+        m = Math.max(m, selFrom + 1);
         if(isInBlockedRange(m)){
-          while(m>selFrom&&isInBlockedRange(m))m--;
+          // buscar el siguiente minuto libre hacia atrás
+          while(m > selFrom && isInBlockedRange(m)) m--;
         }
-        selTo=m;
+        selTo = m;
       }
       render();
     }
@@ -746,45 +607,46 @@ function openSegmentPicker(day,bId,item,cs,ce,coveredMinutes,stage,myItin){
     function onUp(){
       handleFrom.classList.remove("dragging");
       handleTo.classList.remove("dragging");
-      document.removeEventListener("mousemove",onMove);
-      document.removeEventListener("mouseup",onUp);
-      document.removeEventListener("touchmove",onMove);
-      document.removeEventListener("touchend",onUp);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup",   onUp);
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend",  onUp);
     }
 
-    document.addEventListener("mousemove",onMove);
-    document.addEventListener("mouseup",onUp);
-    document.addEventListener("touchmove",onMove,{passive:false});
-    document.addEventListener("touchend",onUp);
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup",   onUp);
+    document.addEventListener("touchmove", onMove, {passive:false});
+    document.addEventListener("touchend",  onUp);
   }
 
-  handleFrom.addEventListener("mousedown",e=>startDrag("from",e));
-  handleFrom.addEventListener("touchstart",e=>startDrag("from",e),{passive:false});
-  handleTo.addEventListener("mousedown",e=>startDrag("to",e));
-  handleTo.addEventListener("touchstart",e=>startDrag("to",e),{passive:false});
+  handleFrom.addEventListener("mousedown",  e=>startDrag("from",e));
+  handleFrom.addEventListener("touchstart", e=>startDrag("from",e), {passive:false});
+  handleTo.addEventListener("mousedown",    e=>startDrag("to",e));
+  handleTo.addEventListener("touchstart",   e=>startDrag("to",e), {passive:false});
 
   render();
 
+  // Cerrar
   document.getElementById("segClose").addEventListener("click",()=>overlay.remove());
   overlay.addEventListener("click",e=>{ if(e.target===overlay) overlay.remove(); });
 
+  // Limpiar
   document.getElementById("segClear").addEventListener("click",()=>{
-    loadItinerary(day).then(itin=>{
-      delete itin[bId];
-      saveItinerary(day,itin);
-      overlay.remove();
-      drawBlocks(day);
-    });
+    const itin=loadItinerary(day);
+    delete itin[bId];
+    saveItinerary(day,itin);
+    overlay.remove();
+    drawBlocks(day);
   });
 
+  // Guardar
   document.getElementById("segSave").addEventListener("click",()=>{
     if(selFrom>=selTo){ overlay.remove(); return; }
-    loadItinerary(day).then(itin=>{
-      itin[bId]=[{from:selFrom,to:selTo}];
-      saveItinerary(day,itin);
-      overlay.remove();
-      drawBlocks(day);
-    });
+    const itin=loadItinerary(day);
+    itin[bId]=[{from:selFrom, to:selTo}];
+    saveItinerary(day,itin);
+    overlay.remove();
+    drawBlocks(day);
   });
 }
 
@@ -798,8 +660,8 @@ function updateTimeLine(){
   const now=new Date();
   let nowM=now.getHours()*60+now.getMinutes();
   const slots=generateTimeSlots();
-  const festStart=slots[0],festEnd=slots[slots.length-1];
-  if(endHour<startHour&&nowM<startHour*60) nowM+=1440;
+  const festStart=slots[0], festEnd=slots[slots.length-1];
+  if(endHour<startHour && nowM<startHour*60) nowM+=1440;
   if(nowM<festStart||nowM>festEnd+intervalMinutes){ line.style.display="none"; return; }
   line.style.left=`${Math.round(festMinToPx(nowM))}px`;
   line.style.display="block";
@@ -807,74 +669,33 @@ function updateTimeLine(){
 }
 
 // ===============================
+// DAY SWITCH
+// ===============================
+function setActiveDay(day){
+  activeDay=day;
+  document.getElementById("day1Btn")?.classList.toggle("active",day===1);
+  document.getElementById("day2Btn")?.classList.toggle("active",day===2);
+  document.getElementById("dayMeta").textContent=day===1?"14/02":"15/02";
+  buildStageColumn(); buildGrid(); drawBlocks(day); updateTimeLine();
+}
+
+// ===============================
 // INIT
 // ===============================
-document.addEventListener("DOMContentLoaded",async ()=>{
-  // Inicializar Firebase
-  try {
-    firebase.initializeApp(firebaseConfig);
-    db = firebase.firestore();
-    console.log("✅ Firebase inicializado");
-  } catch(e){
-    console.error("Error inicializando Firebase:", e);
-    alert("Error conectando con Firebase. Refresca la página.");
-    return;
-  }
+document.getElementById("day1Btn")?.addEventListener("click",()=>setActiveDay(1));
+document.getElementById("day2Btn")?.addEventListener("click",()=>setActiveDay(2));
 
-  myUserId = getUserId();
-  
-  // Intentar cargar perfil desde Firebase
-  try {
-    const docSnap = await db.collection("users").doc(myUserId).get();
-    if(docSnap.exists){
-      const data = docSnap.data();
-      myName = data.name;
-      myColor = data.color;
-    }
-  } catch(e){
-    console.error("Error cargando perfil:", e);
-  }
+loadUserProfile();
 
-  if(!myColor||!myName){
-    showColorPicker((color,name)=>{
-      myColor=color; myName=name;
-      saveUserProfile();
-      renderUserBadge();
-      selectedUsers.add(myUserId);
-      loadAllUsers().then(()=>{
-        buildStageColumn();
-        buildGrid();
-        drawBlocks(activeDay);
-        updateTimeLine();
-        setInterval(updateTimeLine,60000);
-        subscribeToChanges();
-      });
-    });
-  } else {
-    renderUserBadge();
-    selectedUsers.add(myUserId);
-    await loadAllUsers();
-    buildStageColumn();
-    buildGrid();
-    drawBlocks(activeDay);
-    updateTimeLine();
-    setInterval(updateTimeLine,60000);
-    subscribeToChanges();
-  }
-
-  document.getElementById("day1Btn").addEventListener("click",()=>{
-    activeDay=1;
-    document.querySelectorAll(".day-btn").forEach(b=>b.classList.remove("active"));
-    document.getElementById("day1Btn").classList.add("active");
-    document.getElementById("dayMeta").textContent="14/02";
-    drawBlocks(1);
+if(!myColor||!myName){
+  showColorPicker((color,name)=>{
+    myColor=color; myName=name;
+    saveUserProfile(); renderUserBadge();
+    setActiveDay(1); setInterval(updateTimeLine,60000);
   });
+} else {
+  renderUserBadge();
+  setActiveDay(1);
+  setInterval(updateTimeLine,60000);
+}
 
-  document.getElementById("day2Btn").addEventListener("click",()=>{
-    activeDay=2;
-    document.querySelectorAll(".day-btn").forEach(b=>b.classList.remove("active"));
-    document.getElementById("day2Btn").classList.add("active");
-    document.getElementById("dayMeta").textContent="15/02";
-    drawBlocks(2);
-  });
-});
