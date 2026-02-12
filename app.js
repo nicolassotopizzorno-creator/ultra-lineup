@@ -684,3 +684,4 @@ if(!myColor||!myName){
   setActiveDay(1);
   setInterval(updateTimeLine,60000);
 }
+
