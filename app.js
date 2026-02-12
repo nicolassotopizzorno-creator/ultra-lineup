@@ -1,9 +1,6 @@
 // ===============================
-// FIREBASE CONFIG
+// FIREBASE CONFIG (versión compat para GitHub Pages)
 // ===============================
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
 const firebaseConfig = {
   apiKey: "AIzaSyCVJjjeUbduFLG6PixSLVg7sHxDyuTDTAc",
   authDomain: "ultra-buenos-aires.firebaseapp.com",
@@ -13,8 +10,8 @@ const firebaseConfig = {
   appId: "1:646234622202:web:69e8705419af7db8e2a143"
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+// Variables globales para Firebase (se inicializan después de cargar los scripts)
+let db = null;
 
 // ===============================
 // CONFIG
@@ -81,9 +78,9 @@ window.addEventListener('resize', ()=>{
 // FIREBASE - GUARDAR/CARGAR
 // ===============================
 async function saveUserProfile(){
-  if(!myUserId || !myName || !myColor) return;
+  if(!myUserId || !myName || !myColor || !db) return;
   try {
-    await setDoc(doc(db, "users", myUserId), {
+    await db.collection("users").doc(myUserId).set({
       name: myName,
       color: myColor,
       updatedAt: Date.now()
@@ -95,9 +92,9 @@ async function saveUserProfile(){
 }
 
 async function saveItinerary(day, data){
-  if(!myUserId) return;
+  if(!myUserId || !db) return;
   try {
-    await setDoc(doc(db, "itineraries", `${myUserId}_day${day}`), {
+    await db.collection("itineraries").doc(`${myUserId}_day${day}`).set({
       userId: myUserId,
       day: day,
       itinerary: data,
@@ -110,11 +107,10 @@ async function saveItinerary(day, data){
 }
 
 async function loadItinerary(day){
-  if(!myUserId) return {};
+  if(!myUserId || !db) return {};
   try {
-    const docRef = doc(db, "itineraries", `${myUserId}_day${day}`);
-    const docSnap = await getDoc(docRef);
-    if(docSnap.exists()){
+    const docSnap = await db.collection("itineraries").doc(`${myUserId}_day${day}`).get();
+    if(docSnap.exists){
       return docSnap.data().itinerary || {};
     }
   } catch(e){
@@ -124,38 +120,39 @@ async function loadItinerary(day){
 }
 
 async function loadAllUsers(){
+  if(!db) return;
   try {
-    const snapshot = await getDocs(collection(db, "users"));
+    const snapshot = await db.collection("users").get();
     allUsers = {};
-    for(const doc of snapshot.docs){
+    snapshot.forEach(doc => {
       const data = doc.data();
       allUsers[doc.id] = {
         name: data.name,
         color: data.color,
         itinerary: {}
       };
-    }
-    // Cargar itinerarios de cada usuario
-    const itinSnapshot = await getDocs(collection(db, "itineraries"));
-    for(const doc of itinSnapshot.docs){
+    });
+    
+    const itinSnapshot = await db.collection("itineraries").get();
+    itinSnapshot.forEach(doc => {
       const data = doc.data();
       if(allUsers[data.userId]){
         if(!allUsers[data.userId].itinerary) allUsers[data.userId].itinerary = {};
         allUsers[data.userId].itinerary[`day${data.day}`] = data.itinerary;
       }
-    }
+    });
     renderUserSelector();
   } catch(e){
     console.error("Error cargando usuarios:", e);
   }
 }
 
-// Escuchar cambios en tiempo real
 function subscribeToChanges(){
-  onSnapshot(collection(db, "users"), ()=>{
+  if(!db) return;
+  db.collection("users").onSnapshot(()=>{
     loadAllUsers().then(()=> drawBlocks(activeDay));
   });
-  onSnapshot(collection(db, "itineraries"), ()=>{
+  db.collection("itineraries").onSnapshot(()=>{
     loadAllUsers().then(()=> drawBlocks(activeDay));
   });
 }
@@ -813,13 +810,23 @@ function updateTimeLine(){
 // INIT
 // ===============================
 document.addEventListener("DOMContentLoaded",async ()=>{
+  // Inicializar Firebase
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    console.log("✅ Firebase inicializado");
+  } catch(e){
+    console.error("Error inicializando Firebase:", e);
+    alert("Error conectando con Firebase. Refresca la página.");
+    return;
+  }
+
   myUserId = getUserId();
   
   // Intentar cargar perfil desde Firebase
   try {
-    const docRef = doc(db, "users", myUserId);
-    const docSnap = await getDoc(docRef);
-    if(docSnap.exists()){
+    const docSnap = await db.collection("users").doc(myUserId).get();
+    if(docSnap.exists){
       const data = docSnap.data();
       myName = data.name;
       myColor = data.color;
