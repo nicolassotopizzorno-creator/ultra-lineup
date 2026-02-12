@@ -791,5 +791,63 @@ body{
   color:white;
 }
 
+/* =====================
+   SELECTOR DE USUARIOS
+   ===================== */
+#userSelector{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+#userSelector label{
+  font-size:12px;
+  font-weight:700;
+  color:var(--muted);
+  margin-bottom:4px;
+}
+
+#userCheckboxes{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.user-checkbox{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  background:rgba(255,255,255,0.05);
+  border-radius:8px;
+  cursor:pointer;
+  transition:.15s;
+  font-size:13px;
+}
+
+.user-checkbox:hover{
+  background:rgba(255,255,255,0.1);
+}
+
+.user-checkbox input[type="checkbox"]{
+  cursor:pointer;
+}
+
+.seg-lbl-user{
+  font-size:9px;
+  font-weight:600;
+  color:rgba(0,0,0,0.5);
+  margin-top:1px;
+}
+
+@media (max-width: 900px){
+  #userSelector{
+    font-size:11px;
+  }
+  .user-checkbox{
+    font-size:12px;
+    padding:5px 8px;
+  }
+}
 
 
