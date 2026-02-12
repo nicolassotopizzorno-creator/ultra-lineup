@@ -43,7 +43,7 @@ let myColor    = null;
 let myName     = "";
 // Ancho de columna horaria - responsive
 function getColWidth(){
-  return window.innerWidth <= 900 ? 160 : 240;
+  return window.innerWidth <= 900 ? 120 : 240;
 }
 let colWidth = getColWidth();
 
