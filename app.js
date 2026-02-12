@@ -41,7 +41,21 @@ function darkenColor(hex, factor){
 let activeDay  = 1;
 let myColor    = null;
 let myName     = "";
-const colWidth = 240;
+// Ancho de columna horaria - responsive
+function getColWidth(){
+  return window.innerWidth <= 900 ? 160 : 240;
+}
+let colWidth = getColWidth();
+
+// Actualizar colWidth en resize
+window.addEventListener('resize', ()=>{
+  const newWidth = getColWidth();
+  if(newWidth !== colWidth){
+    colWidth = newWidth;
+    buildGrid();
+    drawBlocks(activeDay);
+  }
+});
 
 // ===============================
 // STORAGE
@@ -684,4 +698,3 @@ if(!myColor||!myName){
   setActiveDay(1);
   setInterval(updateTimeLine,60000);
 }
-
