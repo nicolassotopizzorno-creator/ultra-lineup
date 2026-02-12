@@ -850,4 +850,24 @@ body{
   }
 }
 
+/* Fix para círculos de color */
+.cp-color{
+  width:60px;
+  height:60px;
+  border-radius:50%;
+  cursor:pointer;
+  transition:.2s;
+  border:3px solid transparent;
+}
+
+.cp-color:hover{
+  transform:scale(1.1);
+  box-shadow:0 4px 12px rgba(0,0,0,0.3);
+}
+
+.cp-color.selected{
+  border-color:white;
+  box-shadow:0 0 0 2px rgba(0,0,0,0.3);
+}
+
 
